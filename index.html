@@ -78,6 +78,9 @@
       const source = audioCtx.createMediaElementSource(audioEl);
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512; // smaller = fewer bins, fine for "grab a loudness number"
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10; // widen the range so quiet vs loud spreads out more before scaling
+      analyser.smoothingTimeConstant = 0; // no built-in smoothing - we want raw per-frame values
       freqData = new Uint8Array(analyser.frequencyBinCount);
 
       source.connect(analyser);
@@ -94,15 +97,23 @@
       if (!analyser) return;
       analyser.getByteFrequencyData(freqData);
 
-      // Same as the C#: scan the spectrum and grab the single loudest bin, every frame.
+      // Narrow band around the kick drum fundamental (roughly 50-120Hz) instead of
+      // scanning a wide range - this avoids picking up sustained bassline/sub content
+      // that sits loud the whole time, and isolates the actual kick transient.
+      const bassBinStart = 1;
+      const bassBinEnd = 3;
       let highestBass = 0;
-      for (let i = 1; i < freqData.length; i++) {
+      for (let i = bassBinStart; i <= bassBinEnd; i++) {
         if (freqData[i] > highestBass) highestBass = freqData[i];
       }
-      highestBass = highestBass / 255; // 0..1
+      let normalized = highestBass / 255; // 0..1
 
-      // Directly scaled, no smoothing/averaging - matches "bassScaled = highestBass * PhonkometerData"
-      bass = highestBass * phonkometer;
+      // Web Audio's byte output is dB-compressed, so quiet-vs-loud bass sits closer
+      // together than you'd expect - a steep power curve widens that gap back out,
+      // so only genuinely loud kicks (close to 1.0) produce a real spike.
+      normalized = Math.pow(normalized, 4);
+
+      bass = normalized * phonkometer;
     }
 
     startBtn.addEventListener("click", () => {
