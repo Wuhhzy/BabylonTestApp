@@ -218,6 +218,13 @@
       groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.3, 0.2);
       ground.material = groundMat;
 
+      // ---- Model facing-offset corrections ----
+      // Every glTF export can have a different "forward" axis baked in. These constants
+      // exist purely to correct for that mismatch - try 0, Math.PI/2, Math.PI, or
+      // -Math.PI/2 for each until the model visually faces the direction it's moving.
+      const HORSE_FACING_OFFSET = 0; // was Math.PI, try 0 first since PI made it worse
+      const ENEMY_FACING_OFFSET = Math.PI / 2; // requested 90 degree correction
+
       // ---- Player: horse model with character riding on top ----
       // playerRoot is what actually moves - both models get parented to it so they
       // move/rotate together, same as parenting the character to the horse bone in Unity.
@@ -228,14 +235,15 @@
       const horseImport = BABYLON.ImportMeshAsync("assets/horse.glb", scene).then((result) => {
         const horseRoot = result.meshes[0]; // "__root__" of the imported hierarchy
         horseRoot.parent = playerRoot;
-        // Recenter the model under playerRoot - adjust these if the horse still
+        // Recenter the model under playerRoot - adjust this if the horse still
         // looks offset (its glTF pivot isn't necessarily at the model's center).
-        horseRoot.position.set(0, 0, -1);
-        // The model's forward axis doesn't match our movement math (+Z = forward),
-        // so it was walking backwards - this rotates just the visual model 180°
-        // without affecting the turning logic, which lives on playerRoot instead.
+        // Negative Z = further back relative to playerRoot's forward direction.
+        horseRoot.position.set(0, 0, -2);
+        // The model's forward axis doesn't match our movement math (+Z = forward).
+        // HORSE_FACING_OFFSET below is the fix - try 0, Math.PI, Math.PI/2, or
+        // -Math.PI/2 until the horse visually faces the direction it's moving.
         horseRoot.rotationQuaternion = null; // glTF imports often set this, which silently overrides .rotation
-        horseRoot.rotation.y = Math.PI;
+        horseRoot.rotation.y = HORSE_FACING_OFFSET;
         horseRoot.scaling.setAll(0.8);
         result.meshes.forEach((m) => { if (m.material) playerMaterials.push(m.material); });
         return horseRoot;
@@ -346,7 +354,7 @@
             dir.normalize();
             e.position.x += dir.x * e.metadata.speed * dt;
             e.position.z += dir.z * e.metadata.speed * dt;
-            e.rotation.y = Math.atan2(dir.x, dir.z); // face the player while chasing
+            e.rotation.y = Math.atan2(dir.x, dir.z) + ENEMY_FACING_OFFSET; // face the player while chasing, corrected for model orientation
           }
 
           // enemy hits player
