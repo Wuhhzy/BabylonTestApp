@@ -88,33 +88,44 @@
       }
     }
 
+    let bassHistory = []; // rolling window for average energy, used for onset/kick detection
+    const HISTORY_LENGTH = 40; // ~40 frames of recent bass energy
+
     function updateBass() {
       if (!analyser) return;
       analyser.getByteFrequencyData(freqData);
 
       // Only look at the low end of the spectrum (actual "bass"), not the whole mix.
-      // At fftSize 512 with a 44.1kHz source, each bin is ~43Hz wide, so bins 1-8
-      // cover roughly 40-350Hz - kick drum / sub-bass territory.
       const bassBinStart = 1;
       const bassBinEnd = 8;
       let peak = 0;
       for (let i = bassBinStart; i <= bassBinEnd; i++) {
         if (freqData[i] > peak) peak = freqData[i];
       }
-      let normalized = peak / 255; // 0..1
+      const instant = peak / 255; // 0..1, current raw bass energy
 
-      // Threshold + curve: ignore quiet rumble, only react once bass actually hits,
-      // and push the response curve so mid hits don't look the same as full hits.
-      const threshold = 0.55;
-      normalized = normalized < threshold ? 0 : (normalized - threshold) / (1 - threshold);
-      normalized = Math.pow(normalized, 1.5);
+      // Track a rolling average so we know what "normal" bass loudness sounds like
+      // right now, since a phonk drop just sits loud the whole time.
+      bassHistory.push(instant);
+      if (bassHistory.length > HISTORY_LENGTH) bassHistory.shift();
+      const avg = bassHistory.reduce((a, b) => a + b, 0) / bassHistory.length;
 
-      // Punchy envelope: snap UP fast on a hit, fall back DOWN fast between hits.
-      // This is what makes it feel like discrete "explosions" instead of a smooth wobble.
-      if (normalized > bass) {
-        bass = BABYLON.Scalar.Lerp(bass, normalized, 0.9); // near-instant attack
+      // Onset detection: only count it as a "kick" if this frame is meaningfully
+      // louder than the recent average - that's what isolates individual hits
+      // instead of just "the bass is loud right now."
+      const kickMultiplier = 1.35; // raise for fewer/bigger hits, lower for more sensitivity
+      const minAbsoluteLevel = 0.3; // ignore onsets during quiet parts entirely
+      let hit = 0;
+      if (instant > avg * kickMultiplier && instant > minAbsoluteLevel) {
+        hit = Math.min(1, (instant - avg) / (1 - avg));
+        hit = Math.pow(hit, 0.7); // push toward 1 so real kicks read as near-full hits
+      }
+
+      // Punchy envelope: snap UP instantly on a detected kick, decay fast otherwise.
+      if (hit > bass) {
+        bass = hit; // instant attack, no lerp - a kick should hit immediately
       } else {
-        bass = BABYLON.Scalar.Lerp(bass, normalized, 0.25); // quick decay
+        bass = BABYLON.Scalar.Lerp(bass, 0, 0.3); // fast decay back to silence
       }
     }
 
