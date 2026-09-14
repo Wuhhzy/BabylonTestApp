@@ -37,6 +37,7 @@
   <div id="gameover">YOU DIED<br><span style="font-size:20px">refresh to try again</span></div>
 
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
   <script>
     const canvas = document.getElementById("renderCanvas");
     const engine = new BABYLON.Engine(canvas, true);
@@ -145,6 +146,57 @@
       let colorIdx = 0;
       let colorLerpT = 0;
 
+      // ---- GUI layer (screen-space, same role as your Canvas/RawImages in Unity) ----
+      const gui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI", true, scene);
+
+      // --- decorative pulsing sprites, like horse1-4 ---
+      // Replace these paths with your actual image files.
+      const decoPaths = [
+        "assets/horseface.png",
+        "assets/horseface2.png",
+        "assets/horseface3.png",
+        "assets/horseface4.png"
+      ];
+      const decoCorners = [
+        { horizontalAlignment: BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT, verticalAlignment: BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP },
+        { horizontalAlignment: BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT, verticalAlignment: BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP },
+        { horizontalAlignment: BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT, verticalAlignment: BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM },
+        { horizontalAlignment: BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_RIGHT, verticalAlignment: BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM }
+      ];
+      const decoImages = decoPaths.map((path, i) => {
+        const img = new BABYLON.GUI.Image("deco" + i, path);
+        img.width = "120px";
+        img.height = "120px";
+        img.horizontalAlignment = decoCorners[i].horizontalAlignment;
+        img.verticalAlignment = decoCorners[i].verticalAlignment;
+        img.paddingLeft = "20px";
+        img.paddingRight = "20px";
+        img.paddingTop = "20px";
+        img.paddingBottom = "20px";
+        gui.addControl(img);
+        return img;
+      });
+
+      // --- image-based health bar ---
+      // barFrame is the static border/background, barFill is the part that scales with HP.
+      const barFrame = new BABYLON.GUI.Image("barFrame", "assets/healthbar_frame.png");
+      barFrame.width = "300px";
+      barFrame.height = "40px";
+      barFrame.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+      barFrame.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+      barFrame.paddingLeft = "20px";
+      barFrame.paddingTop = "20px";
+      gui.addControl(barFrame);
+
+      const barFill = new BABYLON.GUI.Image("barFill", "assets/healthbar_fill.png");
+      barFill.width = "290px";
+      barFill.height = "30px";
+      barFill.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+      barFill.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+      barFill.paddingLeft = "25px";
+      barFill.paddingTop = "25px";
+      gui.addControl(barFill);
+
       // ---- Ground ----
       const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
       const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
@@ -246,6 +298,7 @@
           if (distToPlayer < 1.3) {
             playerHP -= 20 * dt; // damage per second while touching
             hpEl.textContent = Math.max(0, Math.floor(playerHP));
+            barFill.width = (290 * Math.max(0, playerHP) / 100) + "px";
             if (playerHP <= 0 && !gameOver) {
               gameOver = true;
               gameoverEl.style.display = "block";
@@ -290,6 +343,15 @@
 
         // player glows a bit too on hard hits
         playerMat.emissiveColor = beatColor.scale(bass * 0.5);
+
+        // decorative GUI images pulse scale + tint with the beat, same role as horse1-4
+        const decoScale = 1 + bass * 0.8;
+        for (const img of decoImages) {
+          img.scaleX = decoScale;
+          img.scaleY = decoScale;
+          img.color = beatColor.toHexString();
+          img.alpha = 0.5 + bass * 0.5;
+        }
       });
 
       return scene;
