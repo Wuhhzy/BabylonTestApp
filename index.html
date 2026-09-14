@@ -224,7 +224,7 @@
       playerRoot.position.y = 0;
       let playerMaterials = []; // collected after load, used for the beat-glow effect
 
-      const horseImport = BABYLON.ImportMeshAsync("assets/horse/scene.gltf", scene).then((result) => {
+      const horseImport = BABYLON.ImportMeshAsync("assets/horse.glb", scene).then((result) => {
         const horseRoot = result.meshes[0]; // "__root__" of the imported hierarchy
         horseRoot.parent = playerRoot;
         horseRoot.position.set(0, 0, 0);
@@ -233,7 +233,7 @@
         return horseRoot;
       });
 
-      const characterImport = BABYLON.ImportMeshAsync("assets/character/scene.gltf", scene).then((result) => {
+      const characterImport = BABYLON.ImportMeshAsync("assets/character.glb", scene).then((result) => {
         const characterRoot = result.meshes[0];
         characterRoot.parent = playerRoot;
         // Sitting position on the horse's back - these numbers are a starting guess,
@@ -248,7 +248,7 @@
       // it for every spawn instead of re-importing the file per enemy.
       let enemyTemplate = null;
       let enemyMaterials = [];
-      const enemyImport = BABYLON.ImportMeshAsync("assets/enemy/scene.gltf", scene).then((result) => {
+      const enemyImport = BABYLON.ImportMeshAsync("assets/enemy.glb", scene).then((result) => {
         enemyTemplate = result.meshes[0];
         enemyTemplate.setEnabled(false);
         result.meshes.forEach((m) => { if (m.material) enemyMaterials.push(m.material); });
