@@ -228,7 +228,14 @@
       const horseImport = BABYLON.ImportMeshAsync("assets/horse.glb", scene).then((result) => {
         const horseRoot = result.meshes[0]; // "__root__" of the imported hierarchy
         horseRoot.parent = playerRoot;
-        horseRoot.position.set(0, 0, 0);
+        // Recenter the model under playerRoot - adjust these if the horse still
+        // looks offset (its glTF pivot isn't necessarily at the model's center).
+        horseRoot.position.set(0, 0, -1);
+        // The model's forward axis doesn't match our movement math (+Z = forward),
+        // so it was walking backwards - this rotates just the visual model 180°
+        // without affecting the turning logic, which lives on playerRoot instead.
+        horseRoot.rotationQuaternion = null; // glTF imports often set this, which silently overrides .rotation
+        horseRoot.rotation.y = Math.PI;
         horseRoot.scaling.setAll(0.8);
         result.meshes.forEach((m) => { if (m.material) playerMaterials.push(m.material); });
         return horseRoot;
@@ -272,6 +279,7 @@
         if (!enemyTemplate) return; // model isn't loaded yet, skip this spawn tick
         const enemy = enemyTemplate.clone("enemy", null);
         enemy.setEnabled(true);
+        enemy.rotationQuaternion = null; // clear this so setting .rotation.y in the chase loop actually works
 
         // spawn at a random point on a circle around the player
         const angle = Math.random() * Math.PI * 2;
