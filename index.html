@@ -15,9 +15,23 @@
       position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
       color: red; font-family: monospace; font-size: 48px; display: none;
     }
+    #startScreen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: #111; color: white; font-family: monospace;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; z-index: 10;
+    }
+    #startScreen button {
+      font-family: monospace; font-size: 18px; padding: 10px 20px; cursor: pointer;
+    }
   </style>
 </head>
 <body>
+  <div id="startScreen">
+    <div>crappy hack-n-slash (now with phonk)</div>
+    <input type="file" id="songPicker" accept="audio/*">
+    <button id="startBtn">start (no music, that's fine too)</button>
+  </div>
   <canvas id="renderCanvas"></canvas>
   <div id="hud">HP: <span id="hp">100</span> | Kills: <span id="kills">0</span></div>
   <div id="gameover">YOU DIED<br><span style="font-size:20px">refresh to try again</span></div>
@@ -39,6 +53,58 @@
     const hpEl = document.getElementById("hp");
     const killsEl = document.getElementById("kills");
     const gameoverEl = document.getElementById("gameover");
+    const startScreen = document.getElementById("startScreen");
+    const songPicker = document.getElementById("songPicker");
+    const startBtn = document.getElementById("startBtn");
+
+    // ---- Audio-reactive setup ----
+    // This is the Web Audio equivalent of Unity's AudioSource.GetSpectrumData().
+    let audioEl = null;
+    let analyser = null;
+    let freqData = null;
+    let bass = 0; // 0..1 smoothed "how loud is it right now" value, same role as highestBass in the C#
+
+    function setupAudio(fileOrNull) {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioEl = new Audio();
+      audioEl.loop = true;
+      audioEl.crossOrigin = "anonymous";
+
+      if (fileOrNull) {
+        audioEl.src = URL.createObjectURL(fileOrNull);
+      }
+
+      const source = audioCtx.createMediaElementSource(audioEl);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512; // smaller = fewer bins, fine for "grab a loudness number"
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      if (fileOrNull) {
+        audioEl.play();
+      }
+    }
+
+    function updateBass() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(freqData);
+      // grab the peak bin, same approach as the "loop and find highestBass" pattern
+      let peak = 0;
+      // skip bin 0 (DC offset) like the original script skips index 0
+      for (let i = 1; i < freqData.length; i++) {
+        if (freqData[i] > peak) peak = freqData[i];
+      }
+      const normalized = peak / 255; // 0..1
+      // smooth it a bit so visuals don't strobe frame to frame
+      bass = BABYLON.Scalar.Lerp(bass, normalized, 0.35);
+    }
+
+    startBtn.addEventListener("click", () => {
+      setupAudio(songPicker.files[0] || null);
+      startScreen.style.display = "none";
+    });
 
     const createScene = function () {
       const scene = new BABYLON.Scene(engine);
@@ -46,7 +112,7 @@
 
       // ---- Camera (top-down-ish follow cam) ----
       const camera = new BABYLON.ArcRotateCamera("cam", -Math.PI / 2, 1.0, 25, BABYLON.Vector3.Zero(), scene);
-      camera.lowerRadiusLimit = 15;
+      camera.lowerRadiusLimit = 10;
       camera.upperRadiusLimit = 15;
       camera.lowerBetaLimit = 1.0;
       camera.upperBetaLimit = 1.0;
@@ -55,6 +121,29 @@
       // ---- Light ----
       const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
       light.intensity = 0.9;
+
+      // ---- Post-process pipeline (Babylon's equivalent of the Volume/Bloom/LensDistortion/ChromaticAberration setup) ----
+      const pipeline = new BABYLON.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
+      pipeline.bloomEnabled = true;
+      pipeline.bloomThreshold = 0.6;
+      pipeline.bloomWeight = 0.4;
+      pipeline.bloomKernel = 64;
+      pipeline.chromaticAberrationEnabled = true;
+      pipeline.chromaticAberration.aberrationAmount = 0;
+      pipeline.grainEnabled = false;
+
+      // color cycle, same idea as CycleTextColor() in the Unity script
+      const beatColors = [
+        new BABYLON.Color3(1, 0, 0),
+        new BABYLON.Color3(1, 0.65, 0),
+        new BABYLON.Color3(1, 1, 0),
+        new BABYLON.Color3(0.2, 1, 0.2),
+        new BABYLON.Color3(0.2, 0.2, 1),
+        new BABYLON.Color3(0.53, 0, 1),
+        new BABYLON.Color3(1, 0.5, 1)
+      ];
+      let colorIdx = 0;
+      let colorLerpT = 0;
 
       // ---- Ground ----
       const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
@@ -171,6 +260,36 @@
           spawnTimer = spawnInterval;
           spawnInterval = Math.max(0.6, spawnInterval * 0.97); // ramp difficulty
         }
+
+        // --- audio-reactive visuals (the whole point of this exercise) ---
+        updateBass();
+
+        // camera "punch in" on bass hits, like the OrthographicSize shrink in the C#
+        camera.radius = 15 - bass * 4;
+
+        // bloom/aberration intensity scale with loudness
+        pipeline.bloomWeight = 0.4 + bass * 1.5;
+        pipeline.bloomThreshold = Math.max(0.1, 0.6 - bass * 0.3);
+        pipeline.chromaticAberration.aberrationAmount = bass * 30;
+
+        // cycling color, same Lerp-between-two-colors-then-advance pattern as CycleTextColor
+        colorLerpT += bass * dt * 4 + dt * 0.15;
+        if (colorLerpT >= 1) {
+          colorLerpT = 0;
+          colorIdx = (colorIdx + 1) % beatColors.length;
+        }
+        const nextIdx = (colorIdx + 1) % beatColors.length;
+        const beatColor = BABYLON.Color3.Lerp(beatColors[colorIdx], beatColors[nextIdx], colorLerpT);
+
+        // enemies pulse color + scale with the beat, filling the role of the horse1-4 RawImages
+        for (const e of enemies) {
+          e.material.emissiveColor = beatColor.scale(bass);
+          const pulse = 1 + bass * 0.6;
+          e.scaling.set(pulse, pulse, pulse);
+        }
+
+        // player glows a bit too on hard hits
+        playerMat.emissiveColor = beatColor.scale(bass * 0.5);
       });
 
       return scene;
