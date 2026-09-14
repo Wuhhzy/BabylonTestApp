@@ -88,45 +88,21 @@
       }
     }
 
-    let bassHistory = []; // rolling window for average energy, used for onset/kick detection
-    const HISTORY_LENGTH = 40; // ~40 frames of recent bass energy
+    let phonkometer = 6; // multiplier on raw bass, equivalent to SaveScene.PhonkometerData - tune this
 
     function updateBass() {
       if (!analyser) return;
       analyser.getByteFrequencyData(freqData);
 
-      // Only look at the low end of the spectrum (actual "bass"), not the whole mix.
-      const bassBinStart = 1;
-      const bassBinEnd = 8;
-      let peak = 0;
-      for (let i = bassBinStart; i <= bassBinEnd; i++) {
-        if (freqData[i] > peak) peak = freqData[i];
+      // Same as the C#: scan the spectrum and grab the single loudest bin, every frame.
+      let highestBass = 0;
+      for (let i = 1; i < freqData.length; i++) {
+        if (freqData[i] > highestBass) highestBass = freqData[i];
       }
-      const instant = peak / 255; // 0..1, current raw bass energy
+      highestBass = highestBass / 255; // 0..1
 
-      // Track a rolling average so we know what "normal" bass loudness sounds like
-      // right now, since a phonk drop just sits loud the whole time.
-      bassHistory.push(instant);
-      if (bassHistory.length > HISTORY_LENGTH) bassHistory.shift();
-      const avg = bassHistory.reduce((a, b) => a + b, 0) / bassHistory.length;
-
-      // Onset detection: only count it as a "kick" if this frame is meaningfully
-      // louder than the recent average - that's what isolates individual hits
-      // instead of just "the bass is loud right now."
-      const kickMultiplier = 1.35; // raise for fewer/bigger hits, lower for more sensitivity
-      const minAbsoluteLevel = 0.3; // ignore onsets during quiet parts entirely
-      let hit = 0;
-      if (instant > avg * kickMultiplier && instant > minAbsoluteLevel) {
-        hit = Math.min(1, (instant - avg) / (1 - avg));
-        hit = Math.pow(hit, 0.7); // push toward 1 so real kicks read as near-full hits
-      }
-
-      // Punchy envelope: snap UP instantly on a detected kick, decay fast otherwise.
-      if (hit > bass) {
-        bass = hit; // instant attack, no lerp - a kick should hit immediately
-      } else {
-        bass = BABYLON.Scalar.Lerp(bass, 0, 0.3); // fast decay back to silence
-      }
+      // Directly scaled, no smoothing/averaging - matches "bassScaled = highestBass * PhonkometerData"
+      bass = highestBass * phonkometer;
     }
 
     startBtn.addEventListener("click", () => {
@@ -345,23 +321,23 @@
         updateBass();
 
         // camera "punch in" on bass hits, like the OrthographicSize shrink in the C#
-        camera.radius = 15 - bass * 4;
+        camera.radius = Math.max(4, 15 - bass * 4);
         // small random shake added on top while bass is active, for that volatile feel
         if (bass > 0.05) {
-          camera.targetScreenOffset.x = (Math.random() - 0.5) * bass * 0.3;
-          camera.targetScreenOffset.y = (Math.random() - 0.5) * bass * 0.3;
+          camera.targetScreenOffset.x = (Math.random() - 0.5) * Math.min(bass, 1) * 0.3;
+          camera.targetScreenOffset.y = (Math.random() - 0.5) * Math.min(bass, 1) * 0.3;
         } else {
           camera.targetScreenOffset.x = 0;
           camera.targetScreenOffset.y = 0;
         }
 
         // bloom/aberration intensity scale with loudness
-        pipeline.bloomWeight = 0.4 + bass * 1.5;
-        pipeline.bloomThreshold = Math.max(0.1, 0.6 - bass * 0.3);
-        pipeline.chromaticAberration.aberrationAmount = bass * 30;
+        pipeline.bloomWeight = 0.4 + Math.min(bass, 1) * 1.5;
+        pipeline.bloomThreshold = Math.max(0.1, 0.6 - Math.min(bass, 1) * 0.3);
+        pipeline.chromaticAberration.aberrationAmount = Math.min(bass, 1) * 30;
 
         // cycling color, same Lerp-between-two-colors-then-advance pattern as CycleTextColor
-        colorLerpT += bass * dt * 4 + dt * 0.15;
+        colorLerpT += Math.min(bass, 1) * dt * 4 + dt * 0.15;
         if (colorLerpT >= 1) {
           colorLerpT = 0;
           colorIdx = (colorIdx + 1) % beatColors.length;
@@ -371,25 +347,25 @@
 
         // enemies pulse color + scale with the beat, filling the role of the horse1-4 RawImages
         for (const e of enemies) {
-          e.material.emissiveColor = beatColor.scale(bass);
-          const pulse = 1 + bass * 0.6;
+          e.material.emissiveColor = beatColor.scale(Math.min(bass, 1));
+          const pulse = 1 + Math.min(bass, 1) * 0.6;
           e.scaling.set(pulse, pulse, pulse);
         }
 
         // player glows a bit too on hard hits
-        playerMat.emissiveColor = beatColor.scale(bass * 0.5);
+        playerMat.emissiveColor = beatColor.scale(Math.min(bass, 1) * 0.5);
 
         // decorative GUI images pulse scale + tint with the beat, same role as horse1-4
-        const decoScale = 1 + bass * 0.8;
+        const decoScale = 1 + Math.min(bass, 1) * 0.8;
         for (const img of decoImages) {
           img.scaleX = decoScale;
           img.scaleY = decoScale;
           img.color = beatColor.toHexString();
-          img.alpha = 0.5 + bass * 0.5;
+          img.alpha = 0.5 + Math.min(bass, 1) * 0.5;
           // vibration: jitter the image's on-screen offset while bass is hitting hard
           if (bass > 0.1) {
-            img.left = (Math.random() - 0.5) * bass * 20 + "px";
-            img.top = (Math.random() - 0.5) * bass * 20 + "px";
+            img.left = (Math.random() - 0.5) * Math.min(bass, 3) * 20 + "px";
+            img.top = (Math.random() - 0.5) * Math.min(bass, 3) * 20 + "px";
           } else {
             img.left = "0px";
             img.top = "0px";
