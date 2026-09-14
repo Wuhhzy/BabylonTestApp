@@ -92,7 +92,7 @@
       }
     }
 
-    let phonkometer = 6; // multiplier on raw bass, equivalent to SaveScene.PhonkometerData - tune this
+    let phonkometer = 1; // multiplier on raw bass, equivalent to SaveScene.PhonkometerData - tune this
 
     function updateBass() {
       if (!analyser) return;
@@ -254,9 +254,9 @@
         characterRoot.parent = playerRoot;
         // Sitting position on the horse's back - these numbers are a starting guess,
         // adjust x/y/z until the character actually looks seated.
-        characterRoot.position.set(0, 1.5, -0.3);
+        characterRoot.position.set(0, 1.7, -0.9);
         characterRoot.rotation.y = MATH.PI;
-        characterRoot.scaling.setAll(6);
+        characterRoot.scaling.setAll(25);
         result.meshes.forEach((m) => { if (m.material) playerMaterials.push(m.material); });
         return characterRoot;
       });
