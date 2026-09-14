@@ -91,15 +91,31 @@
     function updateBass() {
       if (!analyser) return;
       analyser.getByteFrequencyData(freqData);
-      // grab the peak bin, same approach as the "loop and find highestBass" pattern
+
+      // Only look at the low end of the spectrum (actual "bass"), not the whole mix.
+      // At fftSize 512 with a 44.1kHz source, each bin is ~43Hz wide, so bins 1-8
+      // cover roughly 40-350Hz - kick drum / sub-bass territory.
+      const bassBinStart = 1;
+      const bassBinEnd = 8;
       let peak = 0;
-      // skip bin 0 (DC offset) like the original script skips index 0
-      for (let i = 1; i < freqData.length; i++) {
+      for (let i = bassBinStart; i <= bassBinEnd; i++) {
         if (freqData[i] > peak) peak = freqData[i];
       }
-      const normalized = peak / 255; // 0..1
-      // smooth it a bit so visuals don't strobe frame to frame
-      bass = BABYLON.Scalar.Lerp(bass, normalized, 0.35);
+      let normalized = peak / 255; // 0..1
+
+      // Threshold + curve: ignore quiet rumble, only react once bass actually hits,
+      // and push the response curve so mid hits don't look the same as full hits.
+      const threshold = 0.55;
+      normalized = normalized < threshold ? 0 : (normalized - threshold) / (1 - threshold);
+      normalized = Math.pow(normalized, 1.5);
+
+      // Punchy envelope: snap UP fast on a hit, fall back DOWN fast between hits.
+      // This is what makes it feel like discrete "explosions" instead of a smooth wobble.
+      if (normalized > bass) {
+        bass = BABYLON.Scalar.Lerp(bass, normalized, 0.9); // near-instant attack
+      } else {
+        bass = BABYLON.Scalar.Lerp(bass, normalized, 0.25); // quick decay
+      }
     }
 
     startBtn.addEventListener("click", () => {
@@ -319,6 +335,14 @@
 
         // camera "punch in" on bass hits, like the OrthographicSize shrink in the C#
         camera.radius = 15 - bass * 4;
+        // small random shake added on top while bass is active, for that volatile feel
+        if (bass > 0.05) {
+          camera.targetScreenOffset.x = (Math.random() - 0.5) * bass * 0.3;
+          camera.targetScreenOffset.y = (Math.random() - 0.5) * bass * 0.3;
+        } else {
+          camera.targetScreenOffset.x = 0;
+          camera.targetScreenOffset.y = 0;
+        }
 
         // bloom/aberration intensity scale with loudness
         pipeline.bloomWeight = 0.4 + bass * 1.5;
@@ -351,6 +375,14 @@
           img.scaleY = decoScale;
           img.color = beatColor.toHexString();
           img.alpha = 0.5 + bass * 0.5;
+          // vibration: jitter the image's on-screen offset while bass is hitting hard
+          if (bass > 0.1) {
+            img.left = (Math.random() - 0.5) * bass * 20 + "px";
+            img.top = (Math.random() - 0.5) * bass * 20 + "px";
+          } else {
+            img.left = "0px";
+            img.top = "0px";
+          }
         }
       });
 
