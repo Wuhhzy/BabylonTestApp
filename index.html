@@ -91,7 +91,7 @@
       }
     }
 
-    let phonkometer = 1; // multiplier on raw bass, equivalent to SaveScene.PhonkometerData - tune this
+    let phonkometer = 6; // multiplier on raw bass, equivalent to SaveScene.PhonkometerData - tune this
 
     function updateBass() {
       if (!analyser) return;
@@ -217,12 +217,43 @@
       groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.3, 0.2);
       ground.material = groundMat;
 
-      // ---- Player ----
-      const player = BABYLON.MeshBuilder.CreateCapsule("player", { height: 2, radius: 0.5 }, scene);
-      player.position.y = 1;
-      const playerMat = new BABYLON.StandardMaterial("playerMat", scene);
-      playerMat.diffuseColor = new BABYLON.Color3(0.2, 0.6, 1);
-      player.material = playerMat;
+      // ---- Player: horse model with character riding on top ----
+      // playerRoot is what actually moves - both models get parented to it so they
+      // move/rotate together, same as parenting the character to the horse bone in Unity.
+      const playerRoot = new BABYLON.TransformNode("playerRoot", scene);
+      playerRoot.position.y = 0;
+      let playerMaterials = []; // collected after load, used for the beat-glow effect
+
+      const horseImport = BABYLON.ImportMeshAsync("assets/horse/scene.gltf", scene).then((result) => {
+        const horseRoot = result.meshes[0]; // "__root__" of the imported hierarchy
+        horseRoot.parent = playerRoot;
+        horseRoot.position.set(0, 0, 0);
+        // horseRoot.scaling.setAll(1); // adjust if the model is the wrong size
+        result.meshes.forEach((m) => { if (m.material) playerMaterials.push(m.material); });
+        return horseRoot;
+      });
+
+      const characterImport = BABYLON.ImportMeshAsync("assets/character/scene.gltf", scene).then((result) => {
+        const characterRoot = result.meshes[0];
+        characterRoot.parent = playerRoot;
+        // Sitting position on the horse's back - these numbers are a starting guess,
+        // adjust x/y/z until the character actually looks seated.
+        characterRoot.position.set(0, 1.3, 0.1);
+        result.meshes.forEach((m) => { if (m.material) playerMaterials.push(m.material); });
+        return characterRoot;
+      });
+
+      // ---- Enemy model template ----
+      // Load the enemy model once, keep it disabled and off to the side, then clone()
+      // it for every spawn instead of re-importing the file per enemy.
+      let enemyTemplate = null;
+      let enemyMaterials = [];
+      const enemyImport = BABYLON.ImportMeshAsync("assets/enemy/scene.gltf", scene).then((result) => {
+        enemyTemplate = result.meshes[0];
+        enemyTemplate.setEnabled(false);
+        result.meshes.forEach((m) => { if (m.material) enemyMaterials.push(m.material); });
+        return enemyTemplate;
+      });
 
       // ---- Input ----
       const inputMap = {};
@@ -236,17 +267,16 @@
 
       // ---- Enemy spawning ----
       function spawnEnemy() {
-        const enemy = BABYLON.MeshBuilder.CreateBox("enemy", { size: 1.2 }, scene);
-        const mat = new BABYLON.StandardMaterial("enemyMat", scene);
-        mat.diffuseColor = new BABYLON.Color3(1, 0.2, 0.2);
-        enemy.material = mat;
+        if (!enemyTemplate) return; // model isn't loaded yet, skip this spawn tick
+        const enemy = enemyTemplate.clone("enemy", null);
+        enemy.setEnabled(true);
 
         // spawn at a random point on a circle around the player
         const angle = Math.random() * Math.PI * 2;
         const dist = 20;
-        enemy.position.x = player.position.x + Math.cos(angle) * dist;
-        enemy.position.z = player.position.z + Math.sin(angle) * dist;
-        enemy.position.y = 0.6;
+        enemy.position.x = playerRoot.position.x + Math.cos(angle) * dist;
+        enemy.position.z = playerRoot.position.z + Math.sin(angle) * dist;
+        enemy.position.y = 0;
 
         enemy.metadata = { speed: 3 + Math.random() * 1.5 };
         enemies.push(enemy);
@@ -272,15 +302,15 @@
         const moveVec = new BABYLON.Vector3(dx, 0, dz);
         if (moveVec.length() > 0) {
           moveVec.normalize();
-          player.position.x += moveVec.x * moveSpeed * dt;
-          player.position.z += moveVec.z * moveSpeed * dt;
+          playerRoot.position.x += moveVec.x * moveSpeed * dt;
+          playerRoot.position.z += moveVec.z * moveSpeed * dt;
           // face movement direction
-          player.rotation.y = Math.atan2(moveVec.x, moveVec.z);
+          playerRoot.rotation.y = Math.atan2(moveVec.x, moveVec.z);
         }
 
         // camera follows player
-        camera.target.x = player.position.x;
-        camera.target.z = player.position.z;
+        camera.target.x = playerRoot.position.x;
+        camera.target.z = playerRoot.position.z;
 
         // --- attack ---
         attackTimer -= dt;
@@ -288,7 +318,7 @@
           attackTimer = ATTACK_COOLDOWN;
           for (let i = enemies.length - 1; i >= 0; i--) {
             const e = enemies[i];
-            if (BABYLON.Vector3.Distance(player.position, e.position) <= ATTACK_RANGE) {
+            if (BABYLON.Vector3.Distance(playerRoot.position, e.position) <= ATTACK_RANGE) {
               e.dispose();
               enemies.splice(i, 1);
               kills++;
@@ -299,13 +329,14 @@
 
         // --- enemies chase player ---
         for (const e of enemies) {
-          const dir = player.position.subtract(e.position);
+          const dir = playerRoot.position.subtract(e.position);
           dir.y = 0;
           const distToPlayer = dir.length();
           if (distToPlayer > 0.01) {
             dir.normalize();
             e.position.x += dir.x * e.metadata.speed * dt;
             e.position.z += dir.z * e.metadata.speed * dt;
+            e.rotation.y = Math.atan2(dir.x, dir.z); // face the player while chasing
           }
 
           // enemy hits player
@@ -357,14 +388,20 @@
         const beatColor = BABYLON.Color3.Lerp(beatColors[colorIdx], beatColors[nextIdx], colorLerpT);
 
         // enemies pulse color + scale with the beat, filling the role of the horse1-4 RawImages
+        // Note: all enemy clones share the same template materials, so tinting once here
+        // affects every enemy on screen at once - cheaper than looping per-enemy.
+        for (const mat of enemyMaterials) {
+          if (mat.emissiveColor !== undefined) mat.emissiveColor = beatColor.scale(Math.min(bass, 1));
+        }
+        const enemyPulse = 1 + Math.min(bass, 1) * 0.6;
         for (const e of enemies) {
-          e.material.emissiveColor = beatColor.scale(Math.min(bass, 1));
-          const pulse = 1 + Math.min(bass, 1) * 0.6;
-          e.scaling.set(pulse, pulse, pulse);
+          e.scaling.set(enemyPulse, enemyPulse, enemyPulse);
         }
 
-        // player glows a bit too on hard hits
-        playerMat.emissiveColor = beatColor.scale(Math.min(bass, 1) * 0.5);
+        // player (horse + character) glows a bit too on hard hits
+        for (const mat of playerMaterials) {
+          if (mat.emissiveColor !== undefined) mat.emissiveColor = beatColor.scale(Math.min(bass, 1) * 0.5);
+        }
 
         // decorative GUI images pulse scale + tint with the beat, same role as horse1-4
         const decoScale = 1 + Math.min(bass, 1) * 0.8;
