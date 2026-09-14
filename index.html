@@ -254,8 +254,9 @@
         characterRoot.parent = playerRoot;
         // Sitting position on the horse's back - these numbers are a starting guess,
         // adjust x/y/z until the character actually looks seated.
-        characterRoot.position.set(0, 1.3, 0.1);
-        characterRoot.scaling.setAll(3);
+        characterRoot.position.set(0, 1.5, -0.3);
+        characterRoot.rotation.y = MATH.PI;
+        characterRoot.scaling.setAll(6);
         result.meshes.forEach((m) => { if (m.material) playerMaterials.push(m.material); });
         return characterRoot;
       });
