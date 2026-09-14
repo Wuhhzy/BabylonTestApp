@@ -1,64 +1,190 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>Babylon.js Playground</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-
-  <!-- Babylon globals (kept so window.BABYLON is available if your app expects it) -->
-  <script src="https://assets.babylonjs.com/generated/Assets.js"></script>
-  <script src="https://cdn.babylonjs.com/recast.js"></script>
-  <script src="https://cdn.babylonjs.com/ammo.js"></script>
-  <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
-  <script src="https://cdn.babylonjs.com/cannon.js"></script>
-  <script src="https://cdn.babylonjs.com/Oimo.js"></script>
-  <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
-  <script src="https://cdn.babylonjs.com/babylon.js"></script>
-  <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
-  <script src="https://cdn.babylonjs.com/proceduralTexturesLibrary/babylonjs.proceduralTextures.min.js"></script>
-  <script src="https://cdn.babylonjs.com/postProcessesLibrary/babylonjs.postProcess.min.js"></script>
-  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.js"></script>
-  <script src="https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
-  <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
-  <script src="https://cdn.babylonjs.com/addons/babylonjs.addons.min.js"></script>
-  <script src="https://cdn.babylonjs.com/inspector/babylon.inspector.bundle.js"></script>
-
+  <meta charset="utf-8">
+  <title>Crappy Hack-n-Slash</title>
   <style>
-    html,body,#renderCanvas{width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:#000}
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; background: #111; }
+    #renderCanvas { width: 100%; height: 100%; touch-action: none; }
+    #hud {
+      position: absolute; top: 10px; left: 10px; color: white;
+      font-family: monospace; font-size: 20px; text-shadow: 1px 1px 2px black;
+      pointer-events: none; user-select: none;
+    }
+    #gameover {
+      position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      color: red; font-family: monospace; font-size: 48px; display: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="renderCanvas"></canvas>
-  <script type="module">
-    // Turn bundle text into a module URL
-    const code = "// snapshot:index.js\nvar createScene = function() {\n  var scene = new BABYLON.Scene(engine);\n  var camera = new BABYLON.FreeCamera(\"camera1\", new BABYLON.Vector3(0, 5, -10), scene);\n  camera.setTarget(BABYLON.Vector3.Zero());\n  camera.attachControl(canvas, true);\n  var light = new BABYLON.HemisphericLight(\"light\", new BABYLON.Vector3(0, 1, 0), scene);\n  light.intensity = 0.7;\n  var sphere = BABYLON.MeshBuilder.CreateSphere(\"sphere\", { diameter: 2, segments: 32 }, scene);\n  sphere.position.y = 1;\n  var ground = BABYLON.MeshBuilder.CreateGround(\"ground\", { width: 6, height: 6 }, scene);\n  var music = new BABYLON.Sound(\"Violons\", \"sounds/violons11.wav\", scene, null, { loop: true, autoplay: true });\n  music.autoplay = false;\n  BABYLON.NodeMaterial.ParseFromSnippetAsync(\"2F999G\", scene).then((nodeMaterial) => {\n    mesh_to_apply_node_material_to.material = nodeMaterial;\n  });\n  return scene;\n};\nexport {\n  createScene\n};\n//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsic25hcHNob3Q6aW5kZXguanMiXSwKICAic291cmNlc0NvbnRlbnQiOiBbImV4cG9ydCBjb25zdCBjcmVhdGVTY2VuZSA9IGZ1bmN0aW9uICgpIHtcbiAgICAvLyBUaGlzIGNyZWF0ZXMgYSBiYXNpYyBCYWJ5bG9uIFNjZW5lIG9iamVjdCAobm9uLW1lc2gpXG4gICAgdmFyIHNjZW5lID0gbmV3IEJBQllMT04uU2NlbmUoZW5naW5lKTtcblxuICAgIC8vIFRoaXMgY3JlYXRlcyBhbmQgcG9zaXRpb25zIGEgZnJlZSBjYW1lcmEgKG5vbi1tZXNoKVxuICAgIHZhciBjYW1lcmEgPSBuZXcgQkFCWUxPTi5GcmVlQ2FtZXJhKFwiY2FtZXJhMVwiLCBuZXcgQkFCWUxPTi5WZWN0b3IzKDAsIDUsIC0xMCksIHNjZW5lKTtcblxuICAgIC8vIFRoaXMgdGFyZ2V0cyB0aGUgY2FtZXJhIHRvIHNjZW5lIG9yaWdpblxuICAgIGNhbWVyYS5zZXRUYXJnZXQoQkFCWUxPTi5WZWN0b3IzLlplcm8oKSk7XG5cbiAgICAvLyBUaGlzIGF0dGFjaGVzIHRoZSBjYW1lcmEgdG8gdGhlIGNhbnZhc1xuICAgIGNhbWVyYS5hdHRhY2hDb250cm9sKGNhbnZhcywgdHJ1ZSk7XG5cbiAgICAvLyBUaGlzIGNyZWF0ZXMgYSBsaWdodCwgYWltaW5nIDAsMSwwIC0gdG8gdGhlIHNreSAobm9uLW1lc2gpXG4gICAgdmFyIGxpZ2h0ID0gbmV3IEJBQllMT04uSGVtaXNwaGVyaWNMaWdodChcImxpZ2h0XCIsIG5ldyBCQUJZTE9OLlZlY3RvcjMoMCwgMSwgMCksIHNjZW5lKTtcblxuICAgIC8vIERlZmF1bHQgaW50ZW5zaXR5IGlzIDEuIExldCdzIGRpbSB0aGUgbGlnaHQgYSBzbWFsbCBhbW91bnRcbiAgICBsaWdodC5pbnRlbnNpdHkgPSAwLjc7XG5cbiAgICAvLyBPdXIgYnVpbHQtaW4gJ3NwaGVyZScgc2hhcGUuXG4gICAgdmFyIHNwaGVyZSA9IEJBQllMT04uTWVzaEJ1aWxkZXIuQ3JlYXRlU3BoZXJlKFwic3BoZXJlXCIsIHtkaWFtZXRlcjogMiwgc2VnbWVudHM6IDMyfSwgc2NlbmUpO1xuXG4gICAgLy8gTW92ZSB0aGUgc3BoZXJlIHVwd2FyZCAxLzIgaXRzIGhlaWdodFxuICAgIHNwaGVyZS5wb3NpdGlvbi55ID0gMTtcblxuICAgIC8vIE91ciBidWlsdC1pbiAnZ3JvdW5kJyBzaGFwZS5cbiAgICB2YXIgZ3JvdW5kID0gQkFCWUxPTi5NZXNoQnVpbGRlci5DcmVhdGVHcm91bmQoXCJncm91bmRcIiwge3dpZHRoOiA2LCBoZWlnaHQ6IDZ9LCBzY2VuZSk7XG5cbiAgICB2YXIgbXVzaWMgPSBuZXcgQkFCWUxPTi5Tb3VuZChcIlZpb2xvbnNcIiwgXCJzb3VuZHMvdmlvbG9uczExLndhdlwiLCBzY2VuZSwgbnVsbCwge2xvb3A6IHRydWUsIGF1dG9wbGF5OiB0cnVlfSk7XG4gICAgbXVzaWMuYXV0b3BsYXkgPSBmYWxzZTtcblxuICAgIEJBQllMT04uTm9kZU1hdGVyaWFsLlBhcnNlRnJvbVNuaXBwZXRBc3luYyhcIjJGOTk5R1wiLCBzY2VuZSkudGhlbihub2RlTWF0ZXJpYWwgPT4ge1xuICAgICAgICAgbWVzaF90b19hcHBseV9ub2RlX21hdGVyaWFsX3RvLm1hdGVyaWFsID0gbm9kZU1hdGVyaWFsO1xuICAgIH0pO1xuXG4gICAgcmV0dXJuIHNjZW5lO1xufTtcbi8vIyBzb3VyY2VVUkw9ZmlsZTovLy9wZy9pbmRleC5qcyJdLAogICJtYXBwaW5ncyI6ICI7QUFBTyxJQUFNLGNBQWMsV0FBWTtBQUVuQyxNQUFJLFFBQVEsSUFBSSxRQUFRLE1BQU0sTUFBTTtBQUdwQyxNQUFJLFNBQVMsSUFBSSxRQUFRLFdBQVcsV0FBVyxJQUFJLFFBQVEsUUFBUSxHQUFHLEdBQUcsR0FBRyxHQUFHLEtBQUs7QUFHcEYsU0FBTyxVQUFVLFFBQVEsUUFBUSxLQUFLLENBQUM7QUFHdkMsU0FBTyxjQUFjLFFBQVEsSUFBSTtBQUdqQyxNQUFJLFFBQVEsSUFBSSxRQUFRLGlCQUFpQixTQUFTLElBQUksUUFBUSxRQUFRLEdBQUcsR0FBRyxDQUFDLEdBQUcsS0FBSztBQUdyRixRQUFNLFlBQVk7QUFHbEIsTUFBSSxTQUFTLFFBQVEsWUFBWSxhQUFhLFVBQVUsRUFBQyxVQUFVLEdBQUcsVUFBVSxHQUFFLEdBQUcsS0FBSztBQUcxRixTQUFPLFNBQVMsSUFBSTtBQUdwQixNQUFJLFNBQVMsUUFBUSxZQUFZLGFBQWEsVUFBVSxFQUFDLE9BQU8sR0FBRyxRQUFRLEVBQUMsR0FBRyxLQUFLO0FBRXBGLE1BQUksUUFBUSxJQUFJLFFBQVEsTUFBTSxXQUFXLHdCQUF3QixPQUFPLE1BQU0sRUFBQyxNQUFNLE1BQU0sVUFBVSxLQUFJLENBQUM7QUFDMUcsUUFBTSxXQUFXO0FBRWpCLFVBQVEsYUFBYSxzQkFBc0IsVUFBVSxLQUFLLEVBQUUsS0FBSyxrQkFBZ0I7QUFDNUUsbUNBQStCLFdBQVc7QUFBQSxFQUMvQyxDQUFDO0FBRUQsU0FBTztBQUNYOyIsCiAgIm5hbWVzIjogW10KfQo=\n";
-    const blob = new Blob([code], { type: 'text/javascript' });
-    const url = URL.createObjectURL(blob);
+  <div id="hud">HP: <span id="hp">100</span> | Kills: <span id="kills">0</span></div>
+  <div id="gameover">YOU DIED<br><span style="font-size:20px">refresh to try again</span></div>
 
-    const BABYLON = window.BABYLON;
-    const canvas = document.getElementById('renderCanvas');
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script>
+    const canvas = document.getElementById("renderCanvas");
+    const engine = new BABYLON.Engine(canvas, true);
 
-    // Import your bundled app (which exports createScene / default)
-    const mod = await import(url);
+    // ---- Game state ----
+    let playerHP = 100;
+    let kills = 0;
+    let gameOver = false;
+    const enemies = [];
+    const ATTACK_RANGE = 2.5;
+    const ATTACK_COOLDOWN = 0.5; // seconds
+    let attackTimer = 0;
 
-    let engine = null;
-    if (typeof mod.createEngine === 'function') {
-      try { engine = await mod.createEngine(); } catch {}
-    }
-    if (!engine) {
-      engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
-    }
-    window.engine = engine; window.canvas = canvas;
+    const hpEl = document.getElementById("hp");
+    const killsEl = document.getElementById("kills");
+    const gameoverEl = document.getElementById("gameover");
 
-    let createScene = mod.createScene || mod.default;
-    if (!createScene && mod.Playground?.CreateScene) createScene = (e,c)=>mod.Playground.CreateScene(e,c);
-    if (!createScene) throw new Error('No createScene() export found.');
+    const createScene = function () {
+      const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color3(0.05, 0.05, 0.08);
 
-    const scene = await (createScene(engine, canvas) ?? createScene());
-    engine.runRenderLoop(()=>scene.render());
-    addEventListener('resize', ()=>engine.resize());
+      // ---- Camera (top-down-ish follow cam) ----
+      const camera = new BABYLON.ArcRotateCamera("cam", -Math.PI / 2, 1.0, 25, BABYLON.Vector3.Zero(), scene);
+      camera.lowerRadiusLimit = 15;
+      camera.upperRadiusLimit = 15;
+      camera.lowerBetaLimit = 1.0;
+      camera.upperBetaLimit = 1.0;
+      camera.inputs.clear(); // no mouse dragging, we control it manually
 
-    addEventListener('unload', ()=> URL.revokeObjectURL(url));
+      // ---- Light ----
+      const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+      light.intensity = 0.9;
+
+      // ---- Ground ----
+      const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
+      const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+      groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.3, 0.2);
+      ground.material = groundMat;
+
+      // ---- Player ----
+      const player = BABYLON.MeshBuilder.CreateCapsule("player", { height: 2, radius: 0.5 }, scene);
+      player.position.y = 1;
+      const playerMat = new BABYLON.StandardMaterial("playerMat", scene);
+      playerMat.diffuseColor = new BABYLON.Color3(0.2, 0.6, 1);
+      player.material = playerMat;
+
+      // ---- Input ----
+      const inputMap = {};
+      scene.actionManager = new BABYLON.ActionManager(scene);
+      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (e) => {
+        inputMap[e.sourceEvent.key.toLowerCase()] = true;
+      }));
+      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (e) => {
+        inputMap[e.sourceEvent.key.toLowerCase()] = false;
+      }));
+
+      // ---- Enemy spawning ----
+      function spawnEnemy() {
+        const enemy = BABYLON.MeshBuilder.CreateBox("enemy", { size: 1.2 }, scene);
+        const mat = new BABYLON.StandardMaterial("enemyMat", scene);
+        mat.diffuseColor = new BABYLON.Color3(1, 0.2, 0.2);
+        enemy.material = mat;
+
+        // spawn at a random point on a circle around the player
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 20;
+        enemy.position.x = player.position.x + Math.cos(angle) * dist;
+        enemy.position.z = player.position.z + Math.sin(angle) * dist;
+        enemy.position.y = 0.6;
+
+        enemy.metadata = { speed: 3 + Math.random() * 1.5 };
+        enemies.push(enemy);
+      }
+
+      let spawnTimer = 0;
+      let spawnInterval = 2.5; // gets faster over time
+
+      // ---- Main loop ----
+      scene.onBeforeRenderObservable.add(() => {
+        if (gameOver) return;
+
+        const dt = engine.getDeltaTime() / 1000;
+
+        // --- movement ---
+        const moveSpeed = 8;
+        let dx = 0, dz = 0;
+        if (inputMap["w"] || inputMap["arrowup"]) dz += 1;
+        if (inputMap["s"] || inputMap["arrowdown"]) dz -= 1;
+        if (inputMap["a"] || inputMap["arrowleft"]) dx -= 1;
+        if (inputMap["d"] || inputMap["arrowright"]) dx += 1;
+
+        const moveVec = new BABYLON.Vector3(dx, 0, dz);
+        if (moveVec.length() > 0) {
+          moveVec.normalize();
+          player.position.x += moveVec.x * moveSpeed * dt;
+          player.position.z += moveVec.z * moveSpeed * dt;
+          // face movement direction
+          player.rotation.y = Math.atan2(moveVec.x, moveVec.z);
+        }
+
+        // camera follows player
+        camera.target.x = player.position.x;
+        camera.target.z = player.position.z;
+
+        // --- attack ---
+        attackTimer -= dt;
+        if (inputMap[" "] && attackTimer <= 0) {
+          attackTimer = ATTACK_COOLDOWN;
+          for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            if (BABYLON.Vector3.Distance(player.position, e.position) <= ATTACK_RANGE) {
+              e.dispose();
+              enemies.splice(i, 1);
+              kills++;
+              killsEl.textContent = kills;
+            }
+          }
+        }
+
+        // --- enemies chase player ---
+        for (const e of enemies) {
+          const dir = player.position.subtract(e.position);
+          dir.y = 0;
+          const distToPlayer = dir.length();
+          if (distToPlayer > 0.01) {
+            dir.normalize();
+            e.position.x += dir.x * e.metadata.speed * dt;
+            e.position.z += dir.z * e.metadata.speed * dt;
+          }
+
+          // enemy hits player
+          if (distToPlayer < 1.3) {
+            playerHP -= 20 * dt; // damage per second while touching
+            hpEl.textContent = Math.max(0, Math.floor(playerHP));
+            if (playerHP <= 0 && !gameOver) {
+              gameOver = true;
+              gameoverEl.style.display = "block";
+            }
+          }
+        }
+
+        // --- spawning ---
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) {
+          spawnEnemy();
+          spawnTimer = spawnInterval;
+          spawnInterval = Math.max(0.6, spawnInterval * 0.97); // ramp difficulty
+        }
+      });
+
+      return scene;
+    };
+
+    const scene = createScene();
+
+    engine.runRenderLoop(() => {
+      scene.render();
+    });
+
+    window.addEventListener("resize", () => {
+      engine.resize();
+    });
   </script>
 </body>
 </html>
